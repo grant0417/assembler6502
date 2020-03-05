@@ -199,7 +199,8 @@ fn create_symbols_and_tokenize(
                 tokens.insert(line_num, vec![]);
 
                 let remove_label = if !OPS.contains(&split_tokens[0]) {
-                    labels.insert(split_tokens[0].to_string(), line_num);
+                    labels.insert(split_tokens[0]
+                                      .trim_end_matches(':').to_string(), line_num);
                     1
                 } else {
                     0
