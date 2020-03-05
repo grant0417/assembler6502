@@ -8,15 +8,15 @@ Supported 6502 ASM features:
  * Hex, Binary, Octal, and Decimal number representation
  * Labels and defines
  * Comments
-  * < and >
+  * `<` and `>`
  
 Features to be added:
- * Pragmas (.BYTE, .WORD, .TEXT, ect.)
- * PC address setting (* = $0000, ORG)
+ * Pragmas (`.BYTE1`, `.WORD`, `.TEXT`, ect.)
+ * PC address setting (`* = $0000`, `ORG`)
  
 Things not in the scope of the project:
  * A full macro engine
- * Non standard Ops
+ * Non standard opcodes
  
 The binary takes the file with the assembly as an argument and two optional 
 arguments of `--pretty-print`, which instead of outputting a binary format will 
@@ -31,14 +31,14 @@ emulator matures.
 Each [opcode](https://www.masswerk.at/6502/6502_instruction_set.html) 
 is either implied or takes some type of address. The address modes for each opcode
 are given in the above linked page. When a numeric value is needed you can
-use the prefixes $(hex), 0(octal), and %(binary). Decimal can also be used 
+use the prefixes `$` (hex), `0` (octal), and `%` (binary). Decimal can also be used 
 un-prefixed. To get the lower byte of a 16 bit use < and > for the upper byte. 
 Defines, similar to constant variables, can be used to assign values to a name using
 the syntax `name = value`.
 
 Here is a simple program to loop through the Fibonacci sequence under 255:
 ```asm
-        VAL = 1
+        VAL = $01
         JMP RESET   ; Sets up the inital conditions
 LOOP:   ADC $00     ; Adds the last value
         LDX $01     ; Moves the 
@@ -81,7 +81,7 @@ addresses. The last columns are the resulting machine code from the line.
 Simply clone the repository using Git:
 
 ```shell script
-git clone https://github.com/grant0417/meme-bot.git
+git clone https://github.com/grant0417/assembler6502
 ```
 
 The using [Cargo](https://www.rust-lang.org/learn/get-started) 
