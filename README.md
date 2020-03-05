@@ -11,7 +11,7 @@ Supported 6502 ASM features:
   * `<` and `>`
  
 Features to be added:
- * Pragmas (`.BYTE1`, `.WORD`, `.TEXT`, ect.)
+ * Pragmas (`.BYTE`, `.WORD`, `.TEXT`, ect.)
  * PC address setting (`* = $0000`, `ORG`)
  
 Things not in the scope of the project:
