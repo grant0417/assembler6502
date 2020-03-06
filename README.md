@@ -1,7 +1,7 @@
 # 6502 Assembler
 
-This assembler takes 6502 ASM and converts it into a binary file
-that is readable by the 6502 CPU emulator. 
+This assembler takes 6502 ASM and converts it into a plain text file
+or binary file that is readable by the 6502 CPU emulator. 
 
 Supported 6502 ASM features:
  * All addressing modes (including relative) and standard Opcodes
@@ -18,7 +18,7 @@ Things not in the scope of the project:
  * A full macro engine
  * Non standard opcodes
  
-The binary takes the file with the assembly as an argument and two optional 
+The assembler takes the file with the assembly as an argument and two optional 
 arguments of `--pretty-print`, which instead of outputting a binary format will 
 print in a human readable format, and `--output file_name`, which will print the 
 output to a file as an alternative to the standard output.
@@ -39,37 +39,41 @@ the syntax `name = value`.
 Here is a simple program to loop through the Fibonacci sequence under 255:
 ```asm
         VAL = $01
+        OLD = $FD
+        NEW = $FE
         JMP RESET   ; Sets up the inital conditions
-LOOP:   ADC $00     ; Adds the last value
-        LDX $01     ; Moves the 
-        STX $00
-        STA $01     ; Stores the new number
+LOOP:   ADC NEW     ; Adds the last value
+        LDX OLD     ; Moves the
+        STX NEW
+        STA OLD     ; Stores the new number
         BVS RESET   ; Resets if overflow flags is set
         JMP LOOP    ; Otherwise loops
-RESET:  CLV
-        LDA VAL     ; Resets values to inital loop conditions
-        STA $00
+RESET:  CLC
+        LDA #VAL    ; Resets values to inital loop conditions
+        STA NEW
         LDA #$00
-        STA $01
-        JMP START   ; Returns to loop
+        STA OLD
+        JMP LOOP    ; Returns to loop
 ```
 
 The program under debug mode would render the result as: 
 ```asm
+     NEW    =   $00FE
      VAL    =   $0001
-0000        JMP RESET        4C 12 00
-0003 LOOP   ADC $00          6D 00 00 
-0006        LDX $01          A6 01 
-0008        STX $00          86 00 
-000A        STA $01          8D 01 00 
-000D        BVS RESET        70 03 
-000F        JMP LOOP         4C 03 00
-0012 RESET  CLV              B8 
-0013        LDA VAL          AD 01 00 
-0016        STA $00          8D 00 00 
-0019        LDA #$00         A9 00 
-001B        STA $01          8D 01 00 
-001E        JMP LOOP         4C 03 00
+     OLD    =   $00FD
+0000        JMP RESET        4C 10 00 
+0003 LOOP   ADC NEW          65 FE 
+0005        LDX OLD          A6 FD 
+0007        STX NEW          86 FE 
+0009        STA OLD          85 FD 
+000B        BVS RESET        70 03 
+000D        JMP LOOP         4C 03 00 
+0010 RESET  CLC              18 
+0011        LDA #VAL         A9 01 
+0013        STA NEW          85 FE 
+0015        LDA #$00         A9 00 
+0017        STA OLD          85 FD 
+0019        JMP LOOP         4C 03 00 
 ```
 
 The left column represents the position of the first byte in memory. The next

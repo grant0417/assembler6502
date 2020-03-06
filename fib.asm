@@ -1,14 +1,16 @@
         VAL = $01
+        OLD = $FD
+        NEW = $FE
         JMP RESET   ; Sets up the inital conditions
-LOOP:   ADC $00     ; Adds the last value
-        LDX $01     ; Moves the 
-        STX $00
-        STA $01     ; Stores the new number
+LOOP:   ADC NEW     ; Adds the last value
+        LDX OLD     ; Moves the
+        STX NEW
+        STA OLD     ; Stores the new number
         BVS RESET   ; Resets if overflow flags is set
         JMP LOOP    ; Otherwise loops
-RESET:  CLV
-        LDA VAL   ; Resets values to inital loop conditions
-        STA $00
+RESET:  CLC
+        LDA #VAL    ; Resets values to inital loop conditions
+        STA NEW
         LDA #$00
-        STA $01
-        JMP LOOP   ; Returns to loop
+        STA OLD
+        JMP LOOP    ; Returns to loop

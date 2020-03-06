@@ -178,7 +178,10 @@ fn create_symbols_and_tokenize(
     let mut defines = HashMap::new();
     let mut tokens = Vec::new();
 
+    let mut solo_label = Vec::new();
+
     let mut line_num = 0;
+
 
     for line in code.lines() {
         // Removes ; and splits into tokens
@@ -195,8 +198,14 @@ fn create_symbols_and_tokenize(
                     _ => panic!(),
                 };
                 defines.insert(split_eq[0].trim().to_string(), Define { size: address, value });
+            } else if split_tokens.len() == 1 && !OPS.contains(&split_tokens[0]) && split_tokens[0].ends_with(':') {
+                solo_label.push(split_tokens[0]);
             } else {
                 tokens.insert(line_num, vec![]);
+
+                for _ in 0..solo_label.len() {
+                    labels.insert(solo_label.pop().unwrap().trim_end_matches(':').to_string(), line_num);
+                }
 
                 let remove_label = if !OPS.contains(&split_tokens[0]) {
                     labels.insert(split_tokens[0]
@@ -233,8 +242,7 @@ fn tokens_to_machine_code(
 
         let op_name = line[0].clone();
 
-        let op = OPS.iter().position(|&s| s == op_name)
-            .expect("Unknown opcode");
+        let op = OPS.iter().position(|&s| s == op_name).unwrap_or_else(|| panic!(format!("Unknow opcode: {}", op_name)));
 
         let mut sym = "".to_string();
 
@@ -339,7 +347,7 @@ fn tokens_to_machine_code(
                     if OPS_HEX[op][12] != -1 {
                         //Relative
                         machine_code.insert_byte(line_num, format_opcode(op, 12));
-                    } else if OPS_HEX[op][8] != -1 {
+                    } else if OPS_HEX[op][6] != -1 {
                         //Zeropage
                         machine_code.insert_byte(line_num, format_opcode(op, 6));
                     } else if OPS_HEX[op][3] != -1 {
@@ -398,6 +406,7 @@ fn machine_code_to_str(code: &MachineCode, labels: &HashMap<String, Label>, debu
         let jmp_flag =  x == "4C" || x == "6C" || x == "20";
 
         for byte in line {
+            //TODO: Labels on lines above are not displayed
             let label = byte.trim_end_matches("label");
             if labels.contains_key(label) {
                 let pc: u16 = byte_pc;
@@ -466,8 +475,9 @@ fn address_to_string(
                 format!("{:02X} {:02X}", value.lower, value.upper)
             }
             _ => {
-                println!("{:?}", num);
-                panic!()
+                panic!(format!("Unknown value: {}\n\
+                                Perhaps you meant to define a value or are using the wrong prefix.",
+                                num))
             }
         }
     }
@@ -573,9 +583,16 @@ fn format_opcode(op: usize, mode: usize) -> String {
     format!("{:02X}", &OPS_HEX[op][mode])
 }
 
+#[derive(Ord, PartialOrd, Eq, PartialEq)]
+enum Mode {
+    Hex,
+    Debug,
+    Binary
+}
+
 /// Main call for the binary, processes arguments and calls functions to do processing
 fn main() {
-    let mut debug = false;
+    let mut mode = Mode::Hex;
     let mut output = false;
     let file;
     let mut output_file = "";
@@ -584,11 +601,15 @@ fn main() {
 
     // Parses input
     for (i, arg) in args.iter().skip(1).enumerate() {
-        if arg.contains("--pretty-print") {
-            debug = true;
-        } else if arg.contains("--output") {
+        if arg.contains("--output") || arg.contains("--out") {
             output = true;
             output_file = args.index(i + 2);
+        } else if arg.contains("--mode"){
+            if args.index(i+2) == "debug" || args.index(i+2) == "pretty-print" {
+                mode = Mode::Debug;
+            } else if args.index(i+2) == "binary" || args.index(i+2) == "rom" {
+                mode = Mode::Binary;
+            }
         }
     }
 
@@ -600,7 +621,7 @@ fn main() {
 
     if file == "" || output && output_file == "" || args.len() < 2 {
         eprintln!(
-            "Usage: {} [--pretty-print] [--output output_file] <input_file>",
+            "Usage: {} [--mode [debug] [binary]] [--output output_file] <input_file>",
             &args[0]
         );
         return;
@@ -624,12 +645,30 @@ fn main() {
 
     machine_code_labeled.defines = defines;
 
+    let debug = mode == Mode::Debug;
     let machine_code = machine_code_to_str(&machine_code_labeled, &labels, debug);
 
-    if output {
-        let mut file = File::create(output_file).unwrap();
-        file.write_all(machine_code.as_ref()).unwrap()
+    if mode == Mode::Binary {
+        if output {
+            let mut file = File::create(output_file).unwrap();
+            let header = "6502ROM...".as_bytes();
+            file.write(header);
+            for byte in machine_code.split_whitespace() {
+                file.write(&[u8::from_str_radix(byte, 16).unwrap()]);
+            }
+        } else {
+            let header = "6502ROM...".as_bytes();
+            print!("{}", "6502ROM...");
+            for byte in machine_code.split_whitespace() {
+                print!("{}", u8::from_str_radix(byte, 16).unwrap() as char);
+            }
+        }
     } else {
-        println!("{}", machine_code);
+        if output {
+            let mut file = File::create(output_file).unwrap();
+            file.write_all(machine_code.as_ref()).unwrap()
+        } else {
+            println!("{}", machine_code);
+        }
     }
 }
