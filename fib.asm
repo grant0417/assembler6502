@@ -2,15 +2,15 @@
         OLD = $FD
         NEW = $FE
         JMP RESET   ; Sets up the inital conditions
-LOOP:   ADC NEW     ; Adds the last value
-        LDX OLD     ; Moves the
-        STX NEW
-        STA OLD     ; Stores the new number
-        BVS RESET   ; Resets if overflow flags is set
-        JMP LOOP    ; Otherwise loops
+LOOP:   ADC OLD     ; Adds the old value to last value
+        BCS RESET   ; Resets if carry flags is set
+        LDX NEW     ; Moves the last value to old
+        STX OLD
+        STA NEW     ; Stores the new number in new
+        JMP LOOP    ; Loop
 RESET:  CLC
         LDA #VAL    ; Resets values to inital loop conditions
-        STA NEW
-        LDA #$00
         STA OLD
+        LDA #$00
+        STA NEW
         JMP LOOP    ; Returns to loop

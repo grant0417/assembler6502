@@ -197,7 +197,12 @@ fn create_symbols_and_tokenize(
                     AddressSize::U16 => u16_decode(split_eq[1].trim()).unwrap(),
                     _ => panic!(),
                 };
-                defines.insert(split_eq[0].trim().to_string(), Define { size: address, value });
+                if split_eq[0].contains("*") {
+                    tokens.insert(line_num, vec!["*".to_string(), format!("{:02X} {:02X}", value.lower, value.upper).to_string()]);
+                    line_num += 1;
+                } else {
+                    defines.insert(split_eq[0].trim().to_string(), Define { size: address, value });
+                }
             } else if split_tokens.len() == 1 && !OPS.contains(&split_tokens[0]) && split_tokens[0].ends_with(':') {
                 solo_label.push(split_tokens[0]);
             } else {
@@ -240,143 +245,150 @@ fn tokens_to_machine_code(
 
     for (line_num, line) in tokens.iter().enumerate() {
 
-        let op_name = line[0].clone();
+        if line[0].as_str() == "*" || line[0].as_str() == "ORG" {
+            // Set Location
+            machine_code.insert_byte(line_num, "*".parse().unwrap());
+            machine_code.insert_byte(line_num, (&line[1]).parse().unwrap());
+            let val = u16_decode(&line[1]).unwrap();
+            byte_num = (val.lower as u16) + (val.upper as u16) * 0x100;
+        } else {
+            let op_name = line[0].clone();
 
-        let op = OPS.iter().position(|&s| s == op_name).unwrap_or_else(|| panic!(format!("Unknow opcode: {}", op_name)));
+            let op = OPS.iter().position(|&s| s == op_name).unwrap_or_else(|| panic!(format!("Unknow opcode: {}", op_name)));
 
-        let mut sym = "".to_string();
+            let mut sym = "".to_string();
 
-        for (label, label_line) in labels {
-            if line_num == *label_line {
-                sym = label.clone();
-                let l = Label {
-                    name: label.clone(),
-                    address: byte_num,
-                };
-                label_locations.insert(label.clone(), l);
-            }
-        }
-
-        machine_code.insert_debug_info(line_num,
-                                       format!("{:<04X} {:<06} {:<03} {:<012} ",
-                                               &byte_num, &sym, &op_name, line.get(1).unwrap_or(&"".to_string())).to_string()
-        );
-
-        if line.len() == 1 {
-            machine_code.insert_byte(line_num, format_opcode(op, 0));
-        } else if line.len() == 2 {
-            if line[1].as_str() == "A" {
-                // Accumulator Mode
-                machine_code.insert_byte(line_num, format_opcode(op, 1));
-            } else {
-                let address = line[1]
-                    .trim_end_matches(",X")
-                    .trim_end_matches(",Y")
-                    .trim_end_matches(')')
-                    .trim_end_matches(",X")
-                    .trim_start_matches('(')
-                    .trim_start_matches('#');
-
-                let address_str = address_to_string(address, &labels, &defines);
-                let mut num_bit = address_size(address);
-
-                if labels.contains_key(address) {
-                    num_bit = if &op_name == "JMP" || &op_name == "JSR" {
-                        AddressSize::U16
-                    } else {
-                        AddressSize::U8
+            for (label, label_line) in labels {
+                if line_num == *label_line {
+                    sym = label.clone();
+                    let l = Label {
+                        name: label.clone(),
+                        address: byte_num,
                     };
-                } else if defines.contains_key(address.trim_start_matches('<').trim_start_matches('>')) {
-                    num_bit = if address.starts_with('<') || address.starts_with('>') {
-                        AddressSize::U8
-                    } else {
-                        defines.get(address).unwrap().size
-                    }
-                }
-
-                match num_bit {
-                    AddressSize::U8 => byte_num += 1,
-                    AddressSize::U16 => byte_num += 2,
-                    _ => {}
-                }
-
-                if line[1].starts_with('#') {
-                    // Immediate Mode
-                    machine_code.insert_byte(line_num, format_opcode(op, 2));
-                } else if line[1].starts_with('(') {
-                    //Indirects
-                    if line[1].ends_with(",X)") {
-                        // Indexed Indirect
-                        machine_code.insert_byte(line_num, format_opcode(op, 10));
-                    } else if line[1].ends_with("),Y") {
-                        // Indirect Indexed
-                        machine_code.insert_byte(line_num, format_opcode(op, 11));
-                    } else if line[1].ends_with(')') {
-                        // Indirect
-                        machine_code.insert_byte(line_num, format_opcode(op, 9));
-                    } else {
-                        panic!("Unknown pattern: Line starts with '(' but does not end");
-                    }
-                } else if line[1].ends_with(",X") {
-                    // X-Indexed
-                    match num_bit {
-                        AddressSize::U8 => {
-                            // Zero-page
-                            machine_code.insert_byte(line_num, format_opcode(op, 7));
-                        }
-                        AddressSize::U16 => {
-                            // Absolute
-                            machine_code.insert_byte(line_num, format_opcode(op, 4));
-                        }
-                        _ => panic!(),
-                    }
-                } else if line[1].ends_with(",Y") {
-                    // Y-Indexed
-                    match num_bit {
-                        AddressSize::U8 => {
-                            // Zero-page
-                            machine_code.insert_byte(line_num, format_opcode(op, 8));
-                        }
-                        AddressSize::U16 => {
-                            // Absolute
-                            machine_code.insert_byte(line_num, format_opcode(op, 5));
-                        }
-                        _ => panic!(),
-                    }
-                } else if num_bit == AddressSize::U8 {
-                    if OPS_HEX[op][12] != -1 {
-                        //Relative
-                        machine_code.insert_byte(line_num, format_opcode(op, 12));
-                    } else if OPS_HEX[op][6] != -1 {
-                        //Zeropage
-                        machine_code.insert_byte(line_num, format_opcode(op, 6));
-                    } else if OPS_HEX[op][3] != -1 {
-                        //Absolute with no high bytes
-                        machine_code.insert_byte(line_num, format_opcode(op, 3));
-                        byte_num += 1;
-                        machine_code.insert_byte(line_num, (&address_str).parse().unwrap());
-                        machine_code.insert_byte(line_num, "00".parse().unwrap());
-                    }
-                } else if num_bit == AddressSize::U16 {
-                    //Absolute
-                    machine_code.insert_byte(line_num, format_opcode(op, 3));
-                } else {
-                    panic!(format!("Op: {} Addr: {}, Size: {:?}", &op_name, &address, &num_bit))
-                }
-                match machine_code.binary_data.get(line_num) {
-                    Some(s) => {
-                        if s.len() <= 2 {
-                            machine_code.insert_byte(line_num, address_str);
-                        }
-                    },
-                    None => machine_code.insert_byte(line_num, address_str)
-
+                    label_locations.insert(label.clone(), l);
                 }
             }
-        } else if line[1].len() > 2 {
-            panic!("Too many tokens on line")
+
+            machine_code.insert_debug_info(line_num,
+                                           format!("{:<04X} {:<06} {:<03} {:<012} ",
+                                                   &byte_num, &sym, &op_name, line.get(1).unwrap_or(&"".to_string())).to_string()
+            );
+
+            if line.len() == 1 {
+                machine_code.insert_byte(line_num, format_opcode(op, 0));
+            } else if line.len() == 2 {
+                if line[1].as_str() == "A" {
+                    // Accumulator Mode
+                    machine_code.insert_byte(line_num, format_opcode(op, 1));
+                } else {
+                    let address = line[1]
+                        .trim_end_matches(",X")
+                        .trim_end_matches(",Y")
+                        .trim_end_matches(')')
+                        .trim_end_matches(",X")
+                        .trim_start_matches('(')
+                        .trim_start_matches('#');
+
+                    let address_str = address_to_string(address, &labels, &defines);
+                    let mut num_bit = address_size(address);
+
+                    if labels.contains_key(address) {
+                        num_bit = if &op_name == "JMP" || &op_name == "JSR" {
+                            AddressSize::U16
+                        } else {
+                            AddressSize::U8
+                        };
+                    } else if defines.contains_key(address.trim_start_matches('<').trim_start_matches('>')) {
+                        num_bit = if address.starts_with('<') || address.starts_with('>') {
+                            AddressSize::U8
+                        } else {
+                            defines.get(address).unwrap().size
+                        }
+                    }
+
+                    match num_bit {
+                        AddressSize::U8 => byte_num += 1,
+                        AddressSize::U16 => byte_num += 2,
+                        _ => {}
+                    }
+
+                    if line[1].starts_with('#') {
+                        // Immediate Mode
+                        machine_code.insert_byte(line_num, format_opcode(op, 2));
+                    } else if line[1].starts_with('(') {
+                        //Indirects
+                        if line[1].ends_with(",X)") {
+                            // Indexed Indirect
+                            machine_code.insert_byte(line_num, format_opcode(op, 10));
+                        } else if line[1].ends_with("),Y") {
+                            // Indirect Indexed
+                            machine_code.insert_byte(line_num, format_opcode(op, 11));
+                        } else if line[1].ends_with(')') {
+                            // Indirect
+                            machine_code.insert_byte(line_num, format_opcode(op, 9));
+                        } else {
+                            panic!("Unknown pattern: Line starts with '(' but does not end");
+                        }
+                    } else if line[1].ends_with(",X") {
+                        // X-Indexed
+                        match num_bit {
+                            AddressSize::U8 => {
+                                // Zero-page
+                                machine_code.insert_byte(line_num, format_opcode(op, 7));
+                            }
+                            AddressSize::U16 => {
+                                // Absolute
+                                machine_code.insert_byte(line_num, format_opcode(op, 4));
+                            }
+                            _ => panic!(),
+                        }
+                    } else if line[1].ends_with(",Y") {
+                        // Y-Indexed
+                        match num_bit {
+                            AddressSize::U8 => {
+                                // Zero-page
+                                machine_code.insert_byte(line_num, format_opcode(op, 8));
+                            }
+                            AddressSize::U16 => {
+                                // Absolute
+                                machine_code.insert_byte(line_num, format_opcode(op, 5));
+                            }
+                            _ => panic!(),
+                        }
+                    } else if num_bit == AddressSize::U8 {
+                        if OPS_HEX[op][12] != -1 {
+                            //Relative
+                            machine_code.insert_byte(line_num, format_opcode(op, 12));
+                        } else if OPS_HEX[op][6] != -1 {
+                            //Zeropage
+                            machine_code.insert_byte(line_num, format_opcode(op, 6));
+                        } else if OPS_HEX[op][3] != -1 {
+                            //Absolute with no high bytes
+                            machine_code.insert_byte(line_num, format_opcode(op, 3));
+                            byte_num += 1;
+                            machine_code.insert_byte(line_num, (&address_str).parse().unwrap());
+                            machine_code.insert_byte(line_num, "00".parse().unwrap());
+                        }
+                    } else if num_bit == AddressSize::U16 {
+                        //Absolute
+                        machine_code.insert_byte(line_num, format_opcode(op, 3));
+                    } else {
+                        panic!(format!("Op: {} Addr: {}, Size: {:?}", &op_name, &address, &num_bit))
+                    }
+                    match machine_code.binary_data.get(line_num) {
+                        Some(s) => {
+                            if s.len() <= 2 {
+                                machine_code.insert_byte(line_num, address_str);
+                            }
+                        },
+                        None => machine_code.insert_byte(line_num, address_str)
+                    }
+                }
+            } else if line[1].len() > 2 {
+                panic!("Too many tokens on line")
+            }
+            byte_num += 1;
         }
-        byte_num += 1;
     }
 
     Ok((machine_code, label_locations))
@@ -397,45 +409,49 @@ fn machine_code_to_str(code: &MachineCode, labels: &HashMap<String, Label>, debu
 
     for (index, line) in code.binary_data.iter().enumerate() {
 
-        let default = "".to_string();
-        if debug {
-            s.push_str(code.debug_info.get(index).unwrap_or(&default));
-        }
+        if line[0].as_str() == "*" {
+            s.push_str("* = ")
+        } else {
+            let default = "".to_string();
+            if debug {
+                s.push_str(code.debug_info.get(index).unwrap_or(&default));
+            }
 
-        let x = line.first().unwrap_or(&default);
-        let jmp_flag =  x == "4C" || x == "6C" || x == "20";
+            let x = line.first().unwrap_or(&default);
+            let jmp_flag = x == "4C" || x == "6C" || x == "20";
 
-        for byte in line {
-            //TODO: Labels on lines above are not displayed
-            let label = byte.trim_end_matches("label");
-            if labels.contains_key(label) {
-                let pc: u16 = byte_pc;
-                let dest = labels.get(label).unwrap().address;
-                if !jmp_flag {
-                    let dist = match dest.cmp(&pc) {
-                        Ordering::Less => { (dest as i8).wrapping_sub(pc as i8 - 1) - 2i8 },
-                        Ordering::Equal => { 0i8 },
-                        Ordering::Greater => { (dest as i8).wrapping_sub(pc as i8) - 1i8 },
-                    };
-                    s.push_str(&format!("{:02X} ", dist));
+            for byte in line {
+                //TODO: Labels on lines above are not displayed
+                let label = byte.trim_end_matches("label");
+                if labels.contains_key(label) {
+                    let pc: u16 = byte_pc;
+                    let dest = labels.get(label).unwrap().address;
+                    if !jmp_flag {
+                        let dist = match dest.cmp(&pc) {
+                            Ordering::Less => { (dest as i8).wrapping_sub(pc as i8 - 1) - 2i8 },
+                            Ordering::Equal => { 0i8 },
+                            Ordering::Greater => { (dest as i8).wrapping_sub(pc as i8) - 1i8 },
+                        };
+                        s.push_str(&format!("{:02X} ", dist));
+                    } else {
+                        let addr = labels.get(label).unwrap().address;
+                        s.push_str(&format!("{:02X} {:02X}", addr % 0xff, addr / 0xff));
+                        byte_pc += 1;
+                    }
                 } else {
-                    let addr = labels.get(label).unwrap().address;
-                    s.push_str(&format!("{:02X} {:02X}", addr % 0xff, addr / 0xff));
-                    byte_pc += 1;
+                    s.push_str(&byte);
+                    s.push_str(" ");
                 }
-            } else {
-                s.push_str(&byte);
+                byte_pc += 1;
+            }
+
+            if !s.ends_with(" ") {
                 s.push_str(" ");
             }
-            byte_pc += 1;
-        }
 
-        if !s.ends_with(" ") {
-            s.push_str(" ");
-        }
-
-        if debug {
-            s.push_str("\n");
+            if debug {
+                s.push_str("\n");
+            }
         }
     }
     s
@@ -587,7 +603,9 @@ fn format_opcode(op: usize, mode: usize) -> String {
 enum Mode {
     Hex,
     Debug,
-    Binary
+    DebugPadded,
+    Binary,
+    BinaryUnpadded,
 }
 
 /// Main call for the binary, processes arguments and calls functions to do processing

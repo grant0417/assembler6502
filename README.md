@@ -9,10 +9,12 @@ Supported 6502 ASM features:
  * Labels and defines
  * Comments
   * `<` and `>`
- 
+  
+Features in progress:
+  * PC address setting (`* = $0000`, `ORG`) currently unstable
+
 Features to be added:
  * Pragmas (`.BYTE`, `.WORD`, `.TEXT`, ect.)
- * PC address setting (`* = $0000`, `ORG`)
  
 Things not in the scope of the project:
  * A full macro engine
@@ -42,37 +44,37 @@ Here is a simple program to loop through the Fibonacci sequence under 255:
         OLD = $FD
         NEW = $FE
         JMP RESET   ; Sets up the inital conditions
-LOOP:   ADC NEW     ; Adds the last value
-        LDX OLD     ; Moves the
-        STX NEW
-        STA OLD     ; Stores the new number
-        BVS RESET   ; Resets if overflow flags is set
-        JMP LOOP    ; Otherwise loops
+LOOP:   ADC OLD     ; Adds the old value to last value
+        BCS RESET   ; Resets if carry flags is set
+        LDX NEW     ; Moves the last value to old
+        STX OLD
+        STA NEW     ; Stores the new number in new
+        JMP LOOP    ; Loop
 RESET:  CLC
         LDA #VAL    ; Resets values to inital loop conditions
-        STA NEW
-        LDA #$00
         STA OLD
+        LDA #$00
+        STA NEW
         JMP LOOP    ; Returns to loop
 ```
 
 The program under debug mode would render the result as: 
 ```asm
+     OLD    =   $00FD
      NEW    =   $00FE
      VAL    =   $0001
-     OLD    =   $00FD
 0000        JMP RESET        4C 10 00 
-0003 LOOP   ADC NEW          65 FE 
-0005        LDX OLD          A6 FD 
-0007        STX NEW          86 FE 
-0009        STA OLD          85 FD 
-000B        BVS RESET        70 03 
+0003 LOOP   ADC OLD          65 FD 
+0005        BCS RESET        B0 09 
+0007        LDX NEW          A6 FE 
+0009        STX OLD          86 FD 
+000B        STA NEW          85 FE 
 000D        JMP LOOP         4C 03 00 
 0010 RESET  CLC              18 
 0011        LDA #VAL         A9 01 
-0013        STA NEW          85 FE 
+0013        STA OLD          85 FD 
 0015        LDA #$00         A9 00 
-0017        STA OLD          85 FD 
+0017        STA NEW          85 FE 
 0019        JMP LOOP         4C 03 00 
 ```
 
