@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fs;
 use std::cmp::Ordering;
-use std::ops::Index;
 use std::fs::File;
 use std::io::Write;
 
+use clap::{Arg, App};
 
 /// Array of all opcodes in alphabetical order
 const OPS: [&str; 56] = [
@@ -603,47 +602,47 @@ fn format_opcode(op: usize, mode: usize) -> String {
 enum Mode {
     Hex,
     Debug,
-    DebugPadded,
     Binary,
-    BinaryUnpadded,
 }
 
 /// Main call for the binary, processes arguments and calls functions to do processing
 fn main() {
-    let mut mode = Mode::Hex;
-    let mut output = false;
-    let file;
-    let mut output_file = "";
 
-    let args: Vec<_> = env::args().collect();
+    let matches = App::new("6502 Assembler")
+        .version("0.1")
+        .author("Grant G.")
+        .about("Assembles 6502 Assembly into machine code")
+        .arg(Arg::with_name("debug")
+            .short("d")
+            .long("debug")
+            .conflicts_with("binary")
+            .help("Outputs machine code formatted with helpful information for debugging"))
+        .arg(Arg::with_name("binary")
+            .short("b")
+            .long("binary")
+            .help("Outputs the machine code in a binary format"))
+        .arg(Arg::with_name("INPUT")
+            .required(true)
+            .index(1))
+        .arg(Arg::with_name("OUTPUT")
+            .short("o")
+            .long("output")
+            .takes_value(true)
+            .help("A file to output the machine code to"))
+        .get_matches();
 
-    // Parses input
-    for (i, arg) in args.iter().skip(1).enumerate() {
-        if arg.contains("--output") || arg.contains("--out") {
-            output = true;
-            output_file = args.index(i + 2);
-        } else if arg.contains("--mode"){
-            if args.index(i+2) == "debug" || args.index(i+2) == "pretty-print" {
-                mode = Mode::Debug;
-            } else if args.index(i+2) == "binary" || args.index(i+2) == "rom" {
-                mode = Mode::Binary;
-            }
+    let mode = {
+        if matches.is_present("debug") {
+            Mode::Debug
+        } else if matches.is_present("binary") {
+            Mode::Binary
+        } else {
+            Mode::Hex
         }
-    }
+    };
 
-    file = args.iter().last().unwrap();
-
-    if (file == output_file || file.starts_with("--")) && file != "" {
-        eprintln!("The file has an invalid name: {}", file)
-    }
-
-    if file == "" || output && output_file == "" || args.len() < 2 {
-        eprintln!(
-            "Usage: {} [--mode [debug] [binary]] [--output output_file] <input_file>",
-            &args[0]
-        );
-        return;
-    }
+    let file= matches.value_of("INPUT").unwrap();
+    let output = matches.value_of("OUTPUT");
 
     let code = match fs::read_to_string(&file) {
         Ok(s) => s,
@@ -663,30 +662,34 @@ fn main() {
 
     machine_code_labeled.defines = defines;
 
-    let debug = mode == Mode::Debug;
-    let machine_code = machine_code_to_str(&machine_code_labeled, &labels, debug);
+    let machine_code = machine_code_to_str(&machine_code_labeled, &labels, matches.is_present("debug"));
 
     if mode == Mode::Binary {
-        if output {
-            let mut file = File::create(output_file).unwrap();
-            let header = "6502ROM...".as_bytes();
-            file.write(header);
-            for byte in machine_code.split_whitespace() {
-                file.write(&[u8::from_str_radix(byte, 16).unwrap()]);
+        match output {
+            Some(output_file) => {
+                let mut file = File::create(output_file).unwrap();
+                let header = "6502ROM...".as_bytes();
+                file.write(header).expect("Unable to write to file");
+                for byte in machine_code.split_whitespace() {
+                    file.write(&[u8::from_str_radix(byte, 16).unwrap()]).expect("Unable to write to file");
+                }
             }
-        } else {
-            let header = "6502ROM...".as_bytes();
-            print!("{}", "6502ROM...");
-            for byte in machine_code.split_whitespace() {
-                print!("{}", u8::from_str_radix(byte, 16).unwrap() as char);
+            None => {
+                print!("{}", "6502ROM...");
+                for byte in machine_code.split_whitespace() {
+                    print!("{}", u8::from_str_radix(byte, 16).unwrap() as char);
+                }
             }
         }
     } else {
-        if output {
-            let mut file = File::create(output_file).unwrap();
-            file.write_all(machine_code.as_ref()).unwrap()
-        } else {
-            println!("{}", machine_code);
+        match output {
+            Some(output_file) => {
+                let mut file = File::create(output_file).unwrap();
+                file.write_all(machine_code.as_ref()).expect("Unable to write to file");
+            }
+            None => {
+                println!("{}", machine_code);
+            }
         }
     }
 }
