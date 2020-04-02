@@ -25,8 +25,8 @@ arguments of `--pretty-print`, which instead of outputting a binary format will
 print in a human readable format, and `--output file_name`, which will print the 
 output to a file as an alternative to the standard output.
 
-The program is quite buggy in its current state but will improve as the 6502
-emulator matures.
+The program is quite buggy in its current state but will improve as the [6502
+emulator](https://github.com/grant0417/emu6502) matures.
  
 ## 6502 ASM basics 
 
@@ -34,7 +34,7 @@ Each [opcode](https://www.masswerk.at/6502/6502_instruction_set.html)
 is either implied or takes some type of address. The address modes for each opcode
 are given in the above linked page. When a numeric value is needed you can
 use the prefixes `$` (hex), `0` (octal), and `%` (binary). Decimal can also be used 
-un-prefixed. To get the lower byte of a 16 bit use < and > for the upper byte. 
+un-prefixed. To get the lower byte of a 16 bit use `<` and `>` for the upper byte. 
 Defines, similar to constant variables, can be used to assign values to a name using
 the syntax `name = value`.
 
